@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Would You Do?</title>
+<style>
+:root{--bg:#fff8ec;--fg:#2b2233;--card:#fff;--ac:#ff5c8a;--mut:#8a7f96;--bd:#e8dccb;--ok:#2a9d8f}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1726;--fg:#f4eefc;--card:#2a2238;--mut:#a99bbd;--bd:#3d3350}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;min-height:100vh}
+#app{max-width:520px;margin:0 auto;padding:22px 16px 40px;text-align:center}
+h1{font-size:2.1rem;margin:.3em 0 .1em;color:var(--ac)}
+h2{margin:.4em 0}
+p{color:var(--mut);margin:.4em 0 1em}
+button{font:inherit;font-weight:700;border:0;border-radius:14px;padding:12px 20px;background:var(--ac);color:#fff;cursor:pointer;margin:4px}
+button.alt{background:var(--card);color:var(--fg);border:2px solid var(--bd)}
+button:disabled{opacity:.4;cursor:default}
+input,textarea{width:100%;font:inherit;padding:12px;border-radius:12px;border:2px solid var(--bd);background:var(--card);color:var(--fg);margin:6px 0}
+.card{background:var(--card);border:2px solid var(--bd);border-radius:18px;padding:14px;margin:10px 0;text-align:left}
+.big{font-size:1.25rem;font-weight:700}
+.code{font-size:2.6rem;letter-spacing:.3em;font-weight:800;color:var(--ac)}
+.who{color:var(--mut);font-size:.85rem;font-weight:700;margin-bottom:4px}
+.add{margin-top:8px;padding-left:10px;border-left:4px solid var(--ac)}
+.done{color:var(--ok);font-weight:700}
+.err{color:#e63946;font-weight:700}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $=id=>document.getElementById(id), app=$("app");
+const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let ws,S=null,lastKey=null,tm=null,errMsg="";
+let id=localStorage.getItem("wwyd-id");
+if(!id){id=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem("wwyd-id",id)}
+let myName=localStorage.getItem("wwyd-name")||"";
+const send=o=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({id,name:myName,...o}))};
+const nm=i=>{const p=S.players.find(x=>x.id===i);return p?p.name:"Someone"};
+
+function connect(){
+  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
+  ws.onopen=()=>{const c=sessionStorage.getItem("wwyd-code");if(c)send({t:"rejoin",code:c});else if(!S)home()};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);
+    if(m.t==="state"){S=m.s;sessionStorage.setItem("wwyd-code",S.code);view()}
+    else if(m.t==="error"){errMsg=m.text;if(!S)home()}
+    else if(m.t==="gone"){sessionStorage.removeItem("wwyd-code");S=null;home()}};
+  ws.onclose=()=>setTimeout(connect,1500);
+}
+
+function home(){
+  lastKey=null;
+  app.innerHTML=`<h1>🤔 What Would You Do?</h1>
+  <p>One player writes a wild hypothetical. Everyone else secretly answers while the author watches them type live. Then answers get passed around for add-ons.</p>
+  <input id="n" maxlength="14" placeholder="Your name" value="${esc(myName)}">
+  <button id="mk">Create a room</button>
+  <div class="card"><input id="c" maxlength="4" placeholder="Room code" style="text-transform:uppercase;text-align:center"><button class="alt" id="jn" style="width:100%;margin:4px 0 0">Join room</button></div>
+  <p class="err" id="e">${esc(errMsg)}</p>`;
+  errMsg="";
+  const nameOk=()=>{myName=$("n").value.trim();if(!myName){$("e").textContent="Enter a name first.";return false}localStorage.setItem("wwyd-name",myName);return true};
+  $("mk").onclick=()=>{if(nameOk())send({t:"create"})};
+  $("jn").onclick=()=>{if(nameOk())send({t:"join",code:$("c").value.trim()})};
+}
+
+function show(key,html,bind){if(key!==lastKey){app.innerHTML=html;lastKey=key;bind&&bind()}}
+
+function typing(field){
+  const t=$("t");t.value=S.mine[field]||"";$("sub").disabled=!t.value.trim();
+  t.oninput=()=>{$("sub").disabled=!t.value.trim();clearTimeout(tm);tm=setTimeout(()=>send({t:"type",field,text:t.value}),120)};
+  $("sub").onclick=()=>{clearTimeout(tm);send({t:"type",field,text:t.value});send({t:"done",field})};
+}
+const skipBtn=()=>S.host===S.me?`<button class="alt" id="sk">Skip waiting</button>`:"";
+const bindSkip=()=>{const b=$("sk");if(b)b.onclick=()=>send({t:"skip"})};
+
+function view(){
+  const rd=S.round,ph=S.phase,isHost=S.host===S.me,isA=S.author===S.me;
+  const resp=S.ids.filter(i=>i!==S.author);
+
+  if(ph==="lobby"){
+    show("lobby",`<h1>🚪 Lobby</h1><p>Share this code with friends (up to 10 players):</p><div class="code">${esc(S.code)}</div>
+      <div class="card" id="live"></div>${isHost?`<button id="st">Start game</button><p id="hint"></p>`:`<p>Waiting for the host to start…</p>`}`,
+      ()=>{if(isHost)$("st").onclick=()=>send({t:"start"})});
+    $("live").innerHTML=`<div class="who">PLAYERS (${S.players.length}/10)</div>`+S.players.map(p=>`<div>${esc(p.name)}${p.id===S.host?" 👑":""}${p.on?"":" (offline)"}</div>`).join("");
+    if(isHost){$("st").disabled=S.players.length<3;$("hint").textContent=S.players.length<3?"Need at least 3 players.":""}
+    return;
+  }
+  if(!S.ids.includes(S.me)){show("out","<h1>👀</h1><p>This game already started without you.</p>");return}
+
+  if(ph==="hypo"){
+    if(isA)show("hy-a"+rd,`<h2>Round ${rd}: you’re the author</h2><p>Write a hypothetical. Everyone else will answer what they’d do.</p>
+      <textarea id="t" rows="4" maxlength="200" placeholder="You wake up and every door in the world leads to the same room…"></textarea><button id="sub" disabled>Send it</button>`,
+      ()=>{const t=$("t");t.oninput=()=>$("sub").disabled=!t.value.trim();$("sub").onclick=()=>send({t:"hypo",text:t.value})});
+    else show("hy-o"+rd,`<h2>Round ${rd}</h2><p>${esc(nm(S.author))} is writing a hypothetical…</p>`);
+    return;
+  }
+
+  if(ph==="respond"){
+    if(isA){
+      show("rs-a"+rd,`<h2>Spectating</h2><div class="card"><div class="who">YOUR HYPOTHETICAL</div>${esc(S.hypo)}</div><div id="live"></div>${skipBtn()}`,bindSkip);
+      $("live").innerHTML=resp.map(i=>{const a=S.answers[i];return `<div class="card"><div class="who">${esc(nm(i))} ${a.done?'<span class="done">✓ done</span>':"is typing…"}</div>${esc(a.text)||"…"}</div>`}).join("");
+    }else if(S.mine.done){
+      show("rs-d"+rd,`<h2>Answer locked in ✓</h2><div class="card">${esc(S.mine.text)}</div><p>Waiting for everyone else…</p>${skipBtn()}`,bindSkip);
+    }else show("rs-w"+rd,`<h2>What would you do?</h2><div class="card"><div class="who">${esc(nm(S.author)).toUpperCase()} ASKS</div>${esc(S.hypo)}</div>
+      <p>${esc(nm(S.author))} can watch you type.</p><textarea id="t" rows="5" maxlength="400" placeholder="I would…"></textarea><button id="sub" disabled>Done</button>`,()=>typing("text"));
+    return;
+  }
+
+  if(ph==="addon"){
+    const rcv=Object.keys(S.adds);
+    if(S.adds[S.me]&&!S.mine.addDone){
+      show("ad-r"+rd,`<h2>Add onto this answer</h2><div class="card"><div class="who">${esc(nm(S.author)).toUpperCase()} ASKED</div>${esc(S.hypo)}</div>
+        <div class="card"><div class="who">${esc(nm(S.adds[S.me].giver)).toUpperCase()} SAID</div>${esc(S.giverText)}</div>
+        <p>What happens next? Keep the story going.</p><textarea id="t" rows="5" maxlength="400" placeholder="And then…"></textarea><button id="sub" disabled>Done</button>`,()=>typing("addText"));
+    }else{
+      show("ad-w"+rd,`<h2>Add-ons in progress</h2><p>${S.adds[S.me]?"Your add-on is locked in ✓":"Some answers are being passed to other players."}</p><div id="live"></div>${skipBtn()}`,bindSkip);
+      $("live").innerHTML=rcv.map(r=>{const a=S.adds[r];return `<div class="card"><div class="who">${esc(nm(r))} → ${esc(nm(a.giver))}’s answer ${a.done?'<span class="done">✓</span>':""}</div>${isA?(esc(a.text)||"…"):(a.done?"Done":"Typing…")}</div>`}).join("");
+    }
+    return;
+  }
+
+  if(ph==="reveal"){
+    lastKey=null;
+    const byGiver={};Object.keys(S.adds).forEach(r=>(byGiver[S.adds[r].giver]=byGiver[S.adds[r].giver]||[]).push(r));
+    show("rv",`<h1>🎉 Reveal</h1><div class="card"><div class="who">${esc(nm(S.author)).toUpperCase()} ASKED</div><div class="big">${esc(S.hypo)}</div></div>
+      ${resp.map(i=>`<div class="card"><div class="who">${esc(nm(i)).toUpperCase()}</div>${esc(S.answers[i].text)}${(byGiver[i]||[]).map(r=>`<div class="add"><div class="who">${esc(nm(r))} added</div>${esc(S.adds[r].text)}</div>`).join("")}</div>`).join("")}
+      ${isHost?`<button id="nx">Next round</button>`:`<p>Waiting for the host to start the next round…</p>`}`,
+      ()=>{if(isHost)$("nx").onclick=()=>send({t:"next"})});
+  }
+}
+connect();
+</script>
+</body>
+</html>
