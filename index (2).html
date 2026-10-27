@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Patrick+Hand&display=swap" rel="stylesheet">
+<title>What Would You Do?</title>
+<style>
+:root{--fg:#111;--card:#f6ecd6;--btn:#f0a43a;--ac:#d8431f;--bd:#111;--ok:#24602d;--err:#a3200a;
+--wob:255px 15px 225px 15px/15px 225px 15px 255px}
+*{box-sizing:border-box}
+body{margin:0;color:var(--fg);min-height:100vh;font-family:"Patrick Hand","Chalkboard SE","Comic Sans MS",cursive,sans-serif;font-size:19px;
+background-color:#2d2822;
+background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .9 0 0 0 0 .82 0 0 0 0 .68 0 0 0 .55 -.17'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+radial-gradient(ellipse at 15% 8%,rgba(120,75,40,.55),transparent 55%),
+radial-gradient(ellipse at 85% 85%,rgba(65,85,75,.55),transparent 55%);
+background-attachment:fixed}
+#app{max-width:520px;margin:0 auto;padding:26px 18px 50px;text-align:center;position:relative}
+h1,h2{display:inline-block;background:var(--card);color:var(--fg);border:3px solid var(--bd);border-radius:var(--wob);font-family:"Caveat Brush","Patrick Hand",cursive;font-weight:400;box-shadow:4px 4px 0 var(--ac)}
+h1{font-size:2.6rem;margin:.3em 0 .3em;padding:.05em .6em;transform:rotate(-2deg)}
+h2{font-size:1.8rem;margin:.5em 0;padding:.05em .6em;transform:rotate(-1deg)}
+p{color:var(--fg);margin:.4em 0 1em;line-height:1.35}
+#app>p{display:inline-block;background:var(--card);border:2px solid var(--bd);border-radius:var(--wob);padding:8px 16px;box-shadow:3px 3px 0 var(--bd)}
+#app>p:empty{display:none}
+button{font:inherit;font-size:1.1rem;color:var(--fg);background:var(--btn);border:3px solid var(--bd);border-radius:var(--wob);padding:10px 22px;margin:6px;cursor:pointer;box-shadow:4px 4px 0 var(--bd);transition:transform .08s,box-shadow .08s}
+button:hover{transform:rotate(-1.5deg) translateY(-1px)}
+button:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--bd)}
+button.alt{background:var(--card)}
+button:disabled{opacity:.5;cursor:default;transform:none;box-shadow:2px 2px 0 var(--bd)}
+input,textarea{width:100%;font:inherit;font-size:1.1rem;padding:12px 14px;border:3px solid var(--bd);border-radius:12px 18px 10px 20px/18px 10px 20px 12px;background:var(--card);color:var(--fg);margin:8px 0;box-shadow:inset 2px 2px 0 rgba(0,0,0,.15);outline:none}
+input::placeholder,textarea::placeholder{color:#111;opacity:.5}
+input:focus,textarea:focus{border-style:dashed}
+.card{position:relative;background:var(--card);color:var(--fg);border:3px solid var(--bd);border-radius:var(--wob);padding:18px 16px 14px;margin:18px 0;text-align:left;box-shadow:5px 5px 0 #000}
+.card:nth-child(odd){transform:rotate(-.6deg)}
+.card:nth-child(even){transform:rotate(.5deg)}
+.card::before{content:"";position:absolute;top:-12px;left:50%;width:70px;height:20px;margin-left:-35px;background:rgba(240,164,58,.8);border-left:2px dotted rgba(0,0,0,.25);border-right:2px dotted rgba(0,0,0,.25);transform:rotate(-3deg)}
+.big{font-size:1.45rem;line-height:1.25}
+.code{display:inline-block;font-family:"Caveat Brush","Patrick Hand",cursive;font-size:3.2rem;letter-spacing:.25em;padding:2px 22px 2px 30px;color:var(--fg);border:4px dashed var(--bd);border-radius:var(--wob);background:var(--card);box-shadow:4px 4px 0 var(--ac);transform:rotate(2deg);margin:6px 0 12px}
+.who{color:var(--fg);font-size:.9rem;font-weight:700;letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase;opacity:.7}
+.add{margin-top:12px;padding-left:12px;border-left:4px dashed var(--fg)}
+.done{color:var(--ok);font-weight:700}
+.err{color:var(--err);font-weight:700}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $=id=>document.getElementById(id), app=$("app");
+const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let ws,S=null,lastKey=null,tm=null,errMsg="";
+let id=localStorage.getItem("wwyd-id");
+if(!id){id=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem("wwyd-id",id)}
+let myName=localStorage.getItem("wwyd-name")||"";
+const send=o=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({id,name:myName,...o}))};
+const nm=i=>{const p=S.players.find(x=>x.id===i);return p?p.name:"Someone"};
+
+function connect(){
+  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
+  ws.onopen=()=>{const c=sessionStorage.getItem("wwyd-code");if(c)send({t:"rejoin",code:c});else if(!S)home()};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);
+    if(m.t==="state"){S=m.s;sessionStorage.setItem("wwyd-code",S.code);view()}
+    else if(m.t==="error"){errMsg=m.text;if(!S)home()}
+    else if(m.t==="gone"){sessionStorage.removeItem("wwyd-code");S=null;home()}};
+  ws.onclose=()=>setTimeout(connect,1500);
+}
+
+function home(){
+  lastKey=null;
+  app.innerHTML=`<h1>🤔 What Would You Do?</h1>
+  <p>One player writes a wild hypothetical. Everyone else secretly answers while the author watches them type live. Then answers get passed around for add-ons.</p>
+  <input id="n" maxlength="14" placeholder="Your name" value="${esc(myName)}">
+  <button id="mk">Create a room</button>
+  <div class="card"><input id="c" maxlength="4" placeholder="Room code" style="text-transform:uppercase;text-align:center"><button class="alt" id="jn" style="width:100%;margin:4px 0 0">Join room</button></div>
+  <p class="err" id="e">${esc(errMsg)}</p>`;
+  errMsg="";
+  const nameOk=()=>{myName=$("n").value.trim();if(!myName){$("e").textContent="Enter a name first.";return false}localStorage.setItem("wwyd-name",myName);return true};
+  $("mk").onclick=()=>{if(nameOk())send({t:"create"})};
+  $("jn").onclick=()=>{if(nameOk())send({t:"join",code:$("c").value.trim()})};
+}
+
+function show(key,html,bind){if(key!==lastKey){app.innerHTML=html;lastKey=key;bind&&bind()}}
+
+function typing(field){
+  const t=$("t");t.value=S.mine[field]||"";$("sub").disabled=!t.value.trim();
+  t.oninput=()=>{$("sub").disabled=!t.value.trim();clearTimeout(tm);tm=setTimeout(()=>send({t:"type",field,text:t.value}),120)};
+  $("sub").onclick=()=>{clearTimeout(tm);send({t:"type",field,text:t.value});send({t:"done",field})};
+}
+const skipBtn=()=>S.host===S.me?`<button class="alt" id="sk">Skip waiting</button>`:"";
+const bindSkip=()=>{const b=$("sk");if(b)b.onclick=()=>send({t:"skip"})};
+
+function view(){
+  const rd=S.round,ph=S.phase,isHost=S.host===S.me,isA=S.author===S.me;
+  const resp=S.ids.filter(i=>i!==S.author);
+
+  if(ph==="lobby"){
+    show("lobby",`<h1>🚪 Lobby</h1><p>Share this code with friends (up to 10 players):</p><div class="code">${esc(S.code)}</div>
+      <div class="card" id="live"></div>${isHost?`<button id="st">Start game</button><p id="hint"></p>`:`<p>Waiting for the host to start…</p>`}`,
+      ()=>{if(isHost)$("st").onclick=()=>send({t:"start"})});
+    $("live").innerHTML=`<div class="who">PLAYERS (${S.players.length}/10)</div>`+S.players.map(p=>`<div>${esc(p.name)}${p.id===S.host?" 👑":""}${p.on?"":" (offline)"}</div>`).join("");
+    if(isHost){$("st").disabled=S.players.length<3;$("hint").textContent=S.players.length<3?"Need at least 3 players.":""}
+    return;
+  }
+  if(!S.ids.includes(S.me)){show("out","<h1>👀</h1><p>This game already started without you.</p>");return}
+
+  if(ph==="hypo"){
+    if(isA)show("hy-a"+rd,`<h2>Round ${rd}: you’re the author</h2><p>Write a hypothetical. Everyone else will answer what they’d do.</p>
+      <textarea id="t" rows="4" maxlength="200" placeholder="You wake up and every door in the world leads to the same room…"></textarea><button id="sub" disabled>Send it</button>`,
+      ()=>{const t=$("t");t.oninput=()=>$("sub").disabled=!t.value.trim();$("sub").onclick=()=>send({t:"hypo",text:t.value})});
+    else show("hy-o"+rd,`<h2>Round ${rd}</h2><p>${esc(nm(S.author))} is writing a hypothetical…</p>`);
+    return;
+  }
+
+  if(ph==="respond"){
+    if(isA){
+      show("rs-a"+rd,`<h2>Spectating</h2><div class="card"><div class="who">YOUR HYPOTHETICAL</div>${esc(S.hypo)}</div><div id="live"></div>${skipBtn()}`,bindSkip);
+      $("live").innerHTML=resp.map(i=>{const a=S.answers[i];return `<div class="card"><div class="who">${esc(nm(i))} ${a.done?'<span class="done">✓ done</span>':"is typing…"}</div>${esc(a.text)||"…"}</div>`}).join("");
+    }else if(S.mine.done){
+      show("rs-d"+rd,`<h2>Answer locked in ✓</h2><div class="card">${esc(S.mine.text)}</div><p>Waiting for everyone else…</p>${skipBtn()}`,bindSkip);
+    }else show("rs-w"+rd,`<h2>What would you do?</h2><div class="card"><div class="who">${esc(nm(S.author)).toUpperCase()} ASKS</div>${esc(S.hypo)}</div>
+      <p>${esc(nm(S.author))} can watch you type.</p><textarea id="t" rows="5" maxlength="400" placeholder="I would…"></textarea><button id="sub" disabled>Done</button>`,()=>typing("text"));
+    return;
+  }
+
+  if(ph==="addon"){
+    const rcv=Object.keys(S.adds);
+    if(S.adds[S.me]&&!S.mine.addDone){
+      show("ad-r"+rd,`<h2>Add onto this answer</h2><div class="card"><div class="who">${esc(nm(S.author)).toUpperCase()} ASKED</div>${esc(S.hypo)}</div>
+        <div class="card"><div class="who">${esc(nm(S.adds[S.me].giver)).toUpperCase()} SAID</div>${esc(S.giverText)}</div>
+        <p>What happens next? Keep the story going.</p><textarea id="t" rows="5" maxlength="400" placeholder="And then…"></textarea><button id="sub" disabled>Done</button>`,()=>typing("addText"));
+    }else{
+      show("ad-w"+rd,`<h2>Add-ons in progress</h2><p>${S.adds[S.me]?"Your add-on is locked in ✓":"Some answers are being passed to other players."}</p><div id="live"></div>${skipBtn()}`,bindSkip);
+      $("live").innerHTML=rcv.map(r=>{const a=S.adds[r];return `<div class="card"><div class="who">${esc(nm(r))} → ${esc(nm(a.giver))}’s answer ${a.done?'<span class="done">✓</span>':""}</div>${isA?(esc(a.text)||"…"):(a.done?"Done":"Typing…")}</div>`}).join("");
+    }
+    return;
+  }
+
+  if(ph==="reveal"){
+    lastKey=null;
+    const byGiver={};Object.keys(S.adds).forEach(r=>(byGiver[S.adds[r].giver]=byGiver[S.adds[r].giver]||[]).push(r));
+    show("rv",`<h1>🎉 Reveal</h1><div class="card"><div class="who">${esc(nm(S.author)).toUpperCase()} ASKED</div><div class="big">${esc(S.hypo)}</div></div>
+      ${resp.map(i=>`<div class="card"><div class="who">${esc(nm(i)).toUpperCase()}</div>${esc(S.answers[i].text)}${(byGiver[i]||[]).map(r=>`<div class="add"><div class="who">${esc(nm(r))} added</div>${esc(S.adds[r].text)}</div>`).join("")}</div>`).join("")}
+      ${isHost?`<button id="nx">Next round</button>`:`<p>Waiting for the host to start the next round…</p>`}`,
+      ()=>{if(isHost)$("nx").onclick=()=>send({t:"next"})});
+  }
+}
+connect();
+</script>
+</body>
+</html>
